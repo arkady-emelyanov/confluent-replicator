@@ -1,0 +1,107 @@
+version: "3"
+
+services:
+  zookeeper:
+    image: zookeeper:3.5.7
+    hostname: zookeeper
+    volumes:
+      - ./storage/zk/data:/data
+      - ./storage/zk/trxn:/datalog
+    environment:
+      - ZOO_MY_ID=1
+
+  dc1:
+    image: confluentinc/cp-kafka:6.0.0
+    hostname: dc1
+    volumes:
+      - ./storage/dc1:/var/lib/kafka/data
+    ports:
+      - "9093:9093"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181/dc1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LISTENERS: INT://:9092,EXT://:9093
+      KAFKA_ADVERTISED_LISTENERS: INT://:9092,EXT://127.0.0.1:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INT:PLAINTEXT,EXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INT
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=WARN,kafka.producer.async.DefaultEventHandler=WARN,state.change.logger=WARN"
+    depends_on:
+      - zookeeper
+
+  dc2:
+    image: confluentinc/cp-kafka:6.0.0
+    hostname: dc2
+    volumes:
+      - ./storage/dc2:/var/lib/kafka/data
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181/dc2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LISTENERS: INT://:9092,EXT://:9094
+      KAFKA_ADVERTISED_LISTENERS: INT://:9092,EXT://127.0.0.1:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INT:PLAINTEXT,EXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INT
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=WARN,kafka.producer.async.DefaultEventHandler=WARN,state.change.logger=WARN"
+    depends_on:
+      - zookeeper
+
+  cdc1:
+    image: cp-kafka-connect-replicator:6.0.0
+    hostname: cdc1
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CONNECT_VERSION: "6.0.0"
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "dc1:9092"
+      CONNECT_GROUP_ID: connect_platform_dc1
+      CONNECT_CONFIG_STORAGE_TOPIC: __connect_platform_dc1_config
+      CONNECT_CONFIG_STORAGE_PARTITIONS: 1
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_TOPIC: __connect_platform_dc1_offset
+      CONNECT_OFFSET_STORAGE_PARTITIONS: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: __connect_platform_dc1_status
+      CONNECT_STATUS_STORAGE_PARTITIONS: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_REST_ADVERTISED_HOST_NAME: 127.0.0.1
+      CONNECT_REST_PORT: 8083
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+    depends_on:
+      - dc1
+
+  cdc2:
+    image: cp-kafka-connect-replicator:6.0.0
+    hostname: cdc2
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CONNECT_VERSION: "6.0.0"
+    ports:
+      - "8084:8084"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "dc2:9092"
+      CONNECT_GROUP_ID: connect_platform_dc2
+      CONNECT_CONFIG_STORAGE_TOPIC: __connect_platform_dc2_config
+      CONNECT_CONFIG_STORAGE_PARTITIONS: 1
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_TOPIC: __connect_platform_dc2_offset
+      CONNECT_OFFSET_STORAGE_PARTITIONS: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: __connect_platform_dc2_status
+      CONNECT_STATUS_STORAGE_PARTITIONS: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_REST_ADVERTISED_HOST_NAME: 127.0.0.1
+      CONNECT_REST_PORT: 8084
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+    depends_on:
+      - dc2
